@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>도경 애완동물 연속보기</title>
+<style>
+body { font-family: Arial; background: #eee; text-align: center; margin:0; padding:0; }
+#game { 
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 0.5vw;
+  width: 95vw;              /* 棋盘宽度=屏幕宽度的95% */
+  max-width: 900px;         /* 最大不超过900px */
+  margin: 20px auto 0;
+  position: relative;}
+.tile {   
+  aspect-ratio: 1 / 1;      /* 保证正方形 */
+  background: white;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center; }
+.tile img {  
+  width: 90%;
+  height: 90%; }
+.selected { border: 3px solid red; }
+.hint { border: 3px solid orange; }
+#info { margin-top: 10px; }
+button { padding: 5px 10px; margin-left: 10px; cursor:pointer; }
+canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
+#container {
+  position: relative;
+  display: inline-block;
+  transform-origin: top center;
+  transition: transform 0.2s ease;
+}
+</style>
+</head>
+<body>
+
+<h1>도경 애완동물 연속보기</h1>
+<div id="info">
+ 남은 시간：<span id="timer">03:00</span>
+  <button id="hintBtn">알림</button>
+</div>
+<div id="container">
+  <div id="game"></div>
+  <canvas id="lineCanvas"></canvas>
+</div>
+
+<audio id="bgm" src="sounds/bgm.mp3" loop></audio>
+<audio id="clickSound" src="sounds/click.mp3"></audio>
+<audio id="clearSound" src="sounds/clear.mp3"></audio>
+
+<script src="game.js"></script>
+</body>
+</html>

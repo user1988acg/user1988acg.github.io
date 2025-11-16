@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#667eea">
+    <title>도경 Match-3 game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+        
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+        }
+        
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            padding: 0;
+        }
+        
+        h1 {
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            font-size: clamp(20px, 5vw, 32px);
+            margin: 0;
+            white-space: nowrap;
+            display: none;
+        }
+        
+        #gameCanvas {
+            border: 3px solid rgba(0, 0, 0, 0.2);
+            background: white;
+            display: block;
+            touch-action: none;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+        
+        .info {
+            color: white;
+            font-size: clamp(12px, 3vw, 18px);
+            text-align: center;
+            padding: 0 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>도경 Match-3 game</h1>
+        <canvas id="gameCanvas"></canvas>
+        <div class="info">블록을 클릭하여 선택한 다음, 인접한 블록을 클릭해 교환하세요</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // 游戏参数
+        const GRID_ROWS = 10;
+        const GRID_COLS = 8;
+        const FPS = 60;
+        const TOTAL_TIME = 60;
+        const BASE_SCORE = 5;
+        const RAINBOW_SCORE = 10;
+        const LEVEL_SCORES = [250, 300, 350, 400, 450, 500, 550, 600, 650, 700];
+
+        // 备用颜色数组
+        const FALLBACK_COLORS = [
+            '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A',
+            '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2'
+        ];
+
+        // 响应式计算
+        let TILE_SIZE = 60;
+        let UI_HEIGHT = 100;
+        let CANVAS_WIDTH = 0;
+        let CANVAS_HEIGHT = 0;
+
+        function calculateSizes() {
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
+            
+            const availableWidth = screenWidth * 0.95;
+            const availableHeight = screenHeight * 0.85;
+            
+            const tileFromWidth = Math.floor(availableWidth / GRID_COLS);
+            const tileFromHeight = Math.floor(availableHeight / GRID_ROWS);
+            
+            TILE_SIZE = Math.min(tileFromWidth, tileFromHeight);
+            TILE_SIZE = Math.max(TILE_SIZE, 25);
+            TILE_SIZE = Math.min(TILE_SIZE, 100);
+            
+            UI_HEIGHT = TILE_SIZE * 1.3;
+            
+            CANVAS_WIDTH = GRID_COLS * TILE_SIZE;
+            CANVAS_HEIGHT = GRID_ROWS * TILE_SIZE + UI_HEIGHT;
+            
+            canvas.width = CANVAS_WIDTH;
+            canvas.height = CANVAS_HEIGHT;
+            
+            if (startButton && nextButton) {
+                updateButtonPositions();
+            }
+        }
+
+        // 游戏状态
+        let level = 0;
+        let score = 0;
+        let gameStarted = false;
+        let gameOver = false;
+        let gamePaused = false;  // 过关后暂停状态
+        let gameOverTime = 0;
+        let startTime = 0;
+        let selected = null;
+        let grid = [];
+        let particles = [];
+        let levelPassed = false;  // 是否通过本关
+
+        // 图片数组
+        const images = [];
+
+        // 音频
+        let bgmAudio = null;
+        let eliminateSound = null;
+
+        // 加载图片
+        function loadImages() {
+            return new Promise((resolve) => {
+                let loaded = 0;
+                for (let i = 0; i < 8; i++) {
+                    const img = new Image();
+                    img.src = `img${i}.jpg`;
+                    img.onload = () => {
+                        loaded++;
+                        if (loaded === 8) resolve();
+                    };
+                    img.onerror = () => {
+                        loaded++;
+                        if (loaded === 8) resolve();
+                    };
+                    images[i] = img;
+                }
+            });
+        }
+
+        // 加载音频
+        function loadAudio() {
+            try {
+                bgmAudio = new Audio();
+                bgmAudio.src = 'bgm.mp3';
+                bgmAudio.loop = true;
+                bgmAudio.volume = 0.6;
+                bgmAudio.load();
+            } catch (e) {
+                console.warn('背景音乐初始化失败');
+            }
+
+            try {
+                eliminateSound = new Audio();
+                eliminateSound.src = 'clear.mp3';
+                eliminateSound.volume = 0.5;
+                eliminateSound.load();
+            } catch (e) {
+                console.warn('消除音效初始化失败');
+            }
+        }
+
+        // 首次交互后可启动音频
+        function enableAudioOnInteraction() {
+            const playAudio = () => {
+                if (bgmAudio && bgmAudio.paused) {
+                    bgmAudio.play().catch(() => {});
+                }
+                document.removeEventListener('click', playAudio);
+                document.removeEventListener('touchstart', playAudio);
+            };
+            
+            document.addEventListener('click', playAudio);
+            document.addEventListener('touchstart', playAudio);
+        }
+
+        // ===== 所有类定义 =====
+        
+        // Tile类
+        class Tile {
+            constructor(kind, row, col) {
+                this.kind = kind;
+                this.row = row;
+                this.col = col;
+                this.x = col * TILE_SIZE;
+                this.y = row * TILE_SIZE + UI_HEIGHT;
+                this.targetX = this.x;
+                this.targetY = this.y;
+            }
+
+            update() {
+                const dx = this.targetX - this.x;
+                const dy = this.targetY - this.y;
+                
+                if (Math.abs(dx) < 0.5) {
+                    this.x = this.targetX;
+                } else {
+                    this.x += dx * 0.3;
+                }
+                
+                if (Math.abs(dy) < 0.5) {
+                    this.y = this.targetY;
+                } else {
+                    this.y += dy * 0.3;
+                }
+            }
+
+            draw() {
+                const padding = 2;
+                const x = Math.round(this.x) + padding;
+                const y = Math.round(this.y) + padding;
+                const size = TILE_SIZE - padding * 2;
+                
+                if (images[this.kind] && images[this.kind].complete) {
+                    ctx.drawImage(images[this.kind], x, y, size, size);
+                } else {
+                    ctx.fillStyle = FALLBACK_COLORS[this.kind];
+                    ctx.fillRect(x, y, size, size);
+                    
+                    const gradient = ctx.createLinearGradient(x, y, x, y + size);
+                    gradient.addColorStop(0, 'rgba(255,255,255,0.2)');
+                    gradient.addColorStop(1, 'rgba(0,0,0,0.1)');
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(x, y, size, size);
+                }
+                
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x, y, size, size);
+            }
+        }
+
+        // 粒子类
+        class Particle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = Math.random() * 3 + 4;
+                this.color = FALLBACK_COLORS[Math.floor(Math.random() * FALLBACK_COLORS.length)];
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 4 + 3;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.life = Math.random() * 10 + 15;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.radius *= 0.92;
+                this.life -= 1;
+            }
+
+            draw() {
+                if (this.radius > 0.5) {
+                    ctx.fillStyle = FALLBACK_COLORS[Math.floor(Math.random() * FALLBACK_COLORS.length)];
+                    ctx.globalAlpha = Math.min(1, this.life / 20);
+                    ctx.beginPath();
+                    ctx.arc(Math.round(this.x), Math.round(this.y), this.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.globalAlpha = 1;
+                }
+            }
+        }
+
+        // 立体按钮类
+        class Button3D {
+            constructor(text, x, y, w, h) {
+                this.text = text;
+                this.x = x;
+                this.y = y;
+                this.w = w;
+                this.h = h;
+                this.hover = false;
+                this.scale = 1.0;
+                this.targetScale = 1.0;
+                this.shadowOffset = 8;
+            }
+
+            update(mx, my) {
+                this.hover = mx >= this.x && mx <= this.x + this.w && my >= this.y && my <= this.y + this.h;
+                this.targetScale = this.hover ? 1.08 : 1.0;
+                this.scale += (this.targetScale - this.scale) * 0.2;
+                this.shadowOffset = this.hover ? 4 : 8;
+            }
+
+            draw() {
+                const centerX = this.x + this.w / 2;
+                const centerY = this.y + this.h / 2;
+                const scaledW = this.w * this.scale;
+                const scaledH = this.h * this.scale;
+                const scaledX = centerX - scaledW / 2;
+                const scaledY = centerY - scaledH / 2;
+
+                // 绘制阴影
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+                ctx.fillRect(scaledX, scaledY + this.shadowOffset, scaledW, scaledH);
+
+                // 绘制按钮主体
+                const gradient = ctx.createLinearGradient(scaledX, scaledY, scaledX, scaledY + scaledH);
+                gradient.addColorStop(0, this.hover ? '#7ED321' : '#64c864');
+                gradient.addColorStop(1, this.hover ? '#5AA817' : '#3a9d3a');
+                
+                ctx.fillStyle = gradient;
+                ctx.fillRect(scaledX, scaledY, scaledW, scaledH);
+
+                // 绘制高光
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+                ctx.fillRect(scaledX, scaledY, scaledW, scaledH * 0.5);
+
+                // 绘制边框
+                ctx.strokeStyle = '#2a7a2a';
+                ctx.lineWidth = Math.max(2, TILE_SIZE * 0.05);
+                ctx.strokeRect(scaledX, scaledY, scaledW, scaledH);
+
+                // 绘制文字
+                ctx.fillStyle = '#ffffff';
+                const fontSize = Math.max(16, Math.floor(TILE_SIZE * 0.35));
+                ctx.font = `bold ${fontSize}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+                ctx.shadowBlur = 4;
+                ctx.shadowOffsetX = 2;
+                ctx.shadowOffsetY = 2;
+                ctx.fillText(this.text, centerX, centerY);
+                ctx.shadowColor = 'transparent';
+            }
+
+            isClicked(mx, my) {
+                return mx >= this.x && mx <= this.x + this.w && my >= this.y && my <= this.y + this.h;
+            }
+        }
+
+        // ===== 按钮初始化 =====
+        let startButton, nextButton;
+
+        function updateButtonPositions() {
+            const btnW = Math.min(200, TILE_SIZE * 3.5);
+            const btnH = Math.max(45, TILE_SIZE * 0.65);
+            const centerX = CANVAS_WIDTH / 2;
+            const centerY = (UI_HEIGHT + GRID_ROWS * TILE_SIZE) / 2;
+            
+            startButton = new Button3D('시작', centerX - btnW / 2, centerY - btnH / 2, btnW, btnH);
+            nextButton = new Button3D('다시 시작', centerX - btnW / 2, centerY - btnH / 2, btnW, btnH);
+        }
+
+        // ===== 游戏逻辑函数 =====
+
+        function createGrid() {
+            const newGrid = [];
+            for (let r = 0; r < GRID_ROWS; r++) {
+                const row = [];
+                for (let c = 0; c < GRID_COLS; c++) {
+                    const kind = Math.floor(Math.random() * 8);
+                    row.push(new Tile(kind, r, c));
+                }
+                newGrid.push(row);
+            }
+            return newGrid;
+        }
+
+        function getTile(pos) {
+            const [x, y] = pos;
+            if (y < UI_HEIGHT) return null;
+            const c = Math.floor(x / TILE_SIZE);
+            const r = Math.floor((y - UI_HEIGHT) / TILE_SIZE);
+            if (r >= 0 && r < GRID_ROWS && c >= 0 && c < GRID_COLS && grid[r] && grid[r][c]) {
+                return grid[r][c];
+            }
+            return null;
+        }
+
+        function swapPositions(t1, t2) {
+            [grid[t1.row][t1.col], grid[t2.row][t2.col]] = [grid[t2.row][t2.col], grid[t1.row][t1.col]];
+            [t1.row, t1.col, t2.row, t2.col] = [t2.row, t2.col, t1.row, t1.col];
+            t1.targetX = t1.col * TILE_SIZE;
+            t1.targetY = t1.row * TILE_SIZE + UI_HEIGHT;
+            t2.targetX = t2.col * TILE_SIZE;
+            t2.targetY = t2.row * TILE_SIZE + UI_HEIGHT;
+        }
+
+        function findMatches() {
+            const matched = new Set();
+
+            for (let r = 0; r < GRID_ROWS; r++) {
+                let count = 1;
+                for (let c = 1; c < GRID_COLS; c++) {
+                    const a = grid[r][c];
+                    const b = grid[r][c - 1];
+                    if (a && b && a.kind === b.kind) {
+                        count++;
+                    } else {
+                        if (count >= 3) {
+                            for (let k = c - count; k < c; k++) {
+                                matched.add(`${r},${k}`);
+                            }
+                        }
+                        count = 1;
+                    }
+                }
+                if (count >= 3) {
+                    for (let k = GRID_COLS - count; k < GRID_COLS; k++) {
+                        matched.add(`${r},${k}`);
+                    }
+                }
+            }
+
+            for (let c = 0; c < GRID_COLS; c++) {
+                let count = 1;
+                for (let r = 1; r < GRID_ROWS; r++) {
+                    const a = grid[r][c];
+                    const b = grid[r - 1][c];
+                    if (a && b && a.kind === b.kind) {
+                        count++;
+                    } else {
+                        if (count >= 3) {
+                            for (let k = r - count; k < r; k++) {
+                                matched.add(`${k},${c}`);
+                            }
+                        }
+                        count = 1;
+                    }
+                }
+                if (count >= 3) {
+                    for (let k = GRID_ROWS - count; k < GRID_ROWS; k++) {
+                        matched.add(`${k},${c}`);
+                    }
+                }
+            }
+
+            return Array.from(matched).map(s => s.split(',').map(Number));
+        }
+
+        function removeTiles(matched) {
+            let gained = 0;
+            
+            if (eliminateSound) {
+                eliminateSound.currentTime = 0;
+                eliminateSound.play().catch(() => {});
+            }
+            
+            for (const [r, c] of matched) {
+                for (let i = 0; i < 20; i++) {
+                    particles.push(new Particle(grid[r][c].x + TILE_SIZE / 2, grid[r][c].y + TILE_SIZE / 2));
+                }
+                gained += grid[r][c].kind === 8 ? RAINBOW_SCORE : BASE_SCORE;
+                grid[r][c] = null;
+            }
+            return gained;
+        }
+
+        async function collapse() {
+            let falling = true;
+            while (falling) {
+                falling = false;
+                for (let r = GRID_ROWS - 2; r >= 0; r--) {
+                    for (let c = 0; c < GRID_COLS; c++) {
+                        if (grid[r][c] && !grid[r + 1][c]) {
+                            grid[r + 1][c] = grid[r][c];
+                            grid[r + 1][c].row = r + 1;
+                            grid[r + 1][c].targetY = (r + 1) * TILE_SIZE + UI_HEIGHT;
+                            grid[r][c] = null;
+                            falling = true;
+                        }
+                    }
+                }
+                await sleep(50);
+            }
+
+            for (let r = 0; r < GRID_ROWS; r++) {
+                for (let c = 0; c < GRID_COLS; c++) {
+                    if (!grid[r][c]) {
+                        const kind = Math.floor(Math.random() * 8);
+                        const tile = new Tile(kind, r, c);
+                        tile.y = -TILE_SIZE;
+                        tile.targetY = r * TILE_SIZE + UI_HEIGHT;
+                        grid[r][c] = tile;
+                    }
+                }
+            }
+
+            falling = true;
+            while (falling) {
+                falling = false;
+                for (let r = 0; r < GRID_ROWS; r++) {
+                    for (let c = 0; c < GRID_COLS; c++) {
+                        const t = grid[r][c];
+                        t.update();
+                        if (Math.abs(t.y - t.targetY) > 1) {
+                            falling = true;
+                        }
+                    }
+                }
+                await sleep(16);
+            }
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        function drawUI() {
+            const fontSize = Math.max(14, Math.floor(TILE_SIZE * 0.35));
+            ctx.font = `${fontSize}px Arial`;
+            ctx.fillStyle = '#333';
+            ctx.textBaseline = 'top';
+
+            if (gameStarted) {
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                const remaining = Math.max(TOTAL_TIME - elapsed, 0);
+                ctx.textAlign = 'left';
+                ctx.fillText(`시간: ${remaining}s`, 10, 8);
+            }
+
+            ctx.textAlign = 'right';
+            ctx.fillText(`포인트: ${score}/${LEVEL_SCORES[level]}`, CANVAS_WIDTH - 10, 8);
+
+            ctx.textAlign = 'left';
+            ctx.fillText(`레벨: ${level + 1}`, 10, UI_HEIGHT - 25);
+        }
+
+        function drawAll() {
+            for (let r = 0; r < GRID_ROWS; r++) {
+                for (let c = 0; c < GRID_COLS; c++) {
+                    if (grid[r][c]) {
+                        grid[r][c].draw();
+                    }
+                }
+            }
+        }
+
+        function drawFrame() {
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            drawUI();
+            drawAll();
+            
+            for (const p of particles) {
+                p.draw();
+            }
+
+            if (selected) {
+                ctx.shadowColor = 'rgba(255, 215, 0, 0.5)';
+                ctx.shadowBlur = 8;
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 4;
+                ctx.strokeRect(selected.x + 2, selected.y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+                ctx.shadowColor = 'transparent';
+            }
+        }
+
+        function showMessage(text, color = '#000') {
+            const fontSize = Math.max(28, Math.floor(TILE_SIZE * 1.0));
+            ctx.font = `bold ${fontSize}px Arial`;
+            ctx.fillStyle = color;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 10;
+            ctx.fillText(text, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 50);
+            ctx.shadowColor = 'transparent';
+        }
+
+        function getPointerPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            let x, y;
+            if (e.touches) {
+                x = e.touches[0].clientX - rect.left;
+                y = e.touches[0].clientY - rect.top;
+            } else {
+                x = e.clientX - rect.left;
+                y = e.clientY - rect.top;
+            }
+            return [x, y];
+        }
+
+        async function handleClick(e) {
+            const [mx, my] = getPointerPos(e);
+            console.log('Click:', mx, my, 'gameStarted:', gameStarted, 'gameOver:', gameOver, 'gamePaused:', gamePaused, 'levelPassed:', levelPassed);
+
+            if (!gameStarted && !gameOver && !gamePaused) {
+                // 初始状态：显示开始按钮
+                if (startButton && startButton.isClicked(mx, my)) {
+                    console.log('Start button clicked');
+                    gameStarted = true;
+                    gameOver = false;
+                    gamePaused = false;
+                    levelPassed = false;
+                    startTime = Date.now();
+                    selected = null;
+                }
+            } else if (gamePaused && !gameOver && levelPassed) {
+                // 过关状态：显示下一关按钮
+                if (nextButton && nextButton.isClicked(mx, my)) {
+                    console.log('Next level button clicked');
+                    level++;
+                    if (level >= LEVEL_SCORES.length) {
+                        // 所有关都通过了
+                        console.log('All levels passed!');
+                        gameOver = true;
+                        gamePaused = false;
+                        levelPassed = true;
+                        gameOverTime = Date.now();
+                    } else {
+                        // 进入下一关
+                        console.log('Starting level', level);
+                        grid = createGrid();
+                        score = 0;
+                        startTime = Date.now();
+                        selected = null;
+                        particles = [];
+                        gameStarted = true;
+                        gamePaused = false;
+                        levelPassed = false;
+                    }
+                }
+            } else if (gameOver) {
+                // 游戏结束状态：显示重新开始按钮
+                if (nextButton && nextButton.isClicked(mx, my)) {
+                    console.log('Restart button clicked');
+                    level = 0;
+                    score = 0;
+                    grid = createGrid();
+                    particles = [];
+                    gameOver = false;
+                    gamePaused = false;
+                    gameStarted = false;
+                    levelPassed = false;
+                    selected = null;
+                }
+            } else if (gameStarted && !gamePaused) {
+                // 游戏中：处理方块交换
+                const tile = getTile([mx, my]);
+                console.log('Tile clicked:', tile);
+                if (tile) {
+                    if (!selected) {
+                        console.log('First tile selected');
+                        selected = tile;
+                    } else if (tile === selected) {
+                        console.log('Same tile, deselecting');
+                        selected = null;
+                    } else if (Math.abs(selected.row - tile.row) + Math.abs(selected.col - tile.col) === 1) {
+                        console.log('Adjacent tiles, swapping');
+                        swapPositions(selected, tile);
+                        await sleep(300);
+                        
+                        let matched = findMatches();
+                        console.log('Matches found:', matched.length);
+                        if (matched.length === 0) {
+                            console.log('No matches, swapping back');
+                            swapPositions(selected, tile);
+                            await sleep(300);
+                        } else {
+                            while (matched.length > 0) {
+                                await sleep(300);
+                                const gained = removeTiles(matched);
+                                score += gained;
+                                await collapse();
+                                matched = findMatches();
+                            }
+                        }
+                        selected = null;
+                    } else {
+                        console.log('Non-adjacent tile, new selection');
+                        selected = tile;
+                    }
+                }
+            }
+        }
+
+        function handleMouseMove(e) {
+            const [mx, my] = getPointerPos(e);
+
+            if (!gameStarted && !gameOver) {
+                if (startButton) startButton.update(mx, my);
+            } else if (gameOver) {
+                if (nextButton) nextButton.update(mx, my);
+            }
+        }
+
+        canvas.addEventListener('click', handleClick);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleClick(e);
+        });
+        canvas.addEventListener('mousemove', handleMouseMove);
+
+        async function gameLoop() {
+            while (true) {
+                // 更新粒子
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    particles[i].update();
+                    if (particles[i].life <= 0 || particles[i].radius < 1) {
+                        particles.splice(i, 1);
+                    }
+                }
+
+                // 更新tiles
+                for (let r = 0; r < GRID_ROWS; r++) {
+                    for (let c = 0; c < GRID_COLS; c++) {
+                        if (grid[r][c]) {
+                            grid[r][c].update();
+                        }
+                    }
+                }
+
+                // 检查游戏状态
+                if (gameStarted && !gamePaused) {
+                    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                    const remaining = Math.max(TOTAL_TIME - elapsed, 0);
+
+                    if (remaining <= 0) {
+                        console.log('Time up! Game Over');
+                        gameStarted = false;
+                        gameOver = true;
+                        gameOverTime = Date.now();
+                        levelPassed = false;
+                    }
+
+                    if (!gameOver && score >= LEVEL_SCORES[level]) {
+                        // 过关：暂停游戏，显示按钮
+                        console.log('Level passed! Score:', score, 'Required:', LEVEL_SCORES[level]);
+                        gameStarted = false;
+                        gamePaused = true;
+                        levelPassed = true;
+                        gameOverTime = Date.now();
+                    }
+                }
+
+                // 绘制游戏画面
+                drawFrame();
+
+                // 绘制UI元素
+                if (!gameStarted && !gameOver && !gamePaused) {
+                    // 初始状态：显示开始按钮
+                    if (startButton) startButton.draw();
+                } else if (gamePaused && !gameOver) {
+                    // 过关状态：显示下一关按钮
+                    const elapsedSinceEnd = (Date.now() - gameOverTime) / 1000;
+                    if (elapsedSinceEnd > 0.5) {
+                        if (level + 1 >= LEVEL_SCORES.length) {
+                            showMessage('모든 스테이지 클리어！', '#00AA00');
+                        } else {
+                            showMessage(`${level + 1} 레벨 통과！`, '#00AA00');
+                        }
+                        if (elapsedSinceEnd > 1.0) {
+                            nextButton.text = '다음 단계';
+                            if (nextButton) nextButton.draw();
+                        }
+                    }
+                } else if (gameOver) {
+                    // 游戏结束状态
+                    const elapsedSinceEnd = (Date.now() - gameOverTime) / 1000;
+                    if (elapsedSinceEnd > 0.5) {
+                        if (levelPassed) {
+                            showMessage('모든 레벨 클리어！', '#00AA00');
+                        } else {
+                            showMessage('게임 끝', '#CC0000');
+                        }
+                        if (elapsedSinceEnd > 1.0) {
+                            nextButton.text = '다시 시작';
+                            if (nextButton) nextButton.draw();
+                        }
+                    }
+                }
+
+                await sleep(1000 / FPS);
+            }
+        }
+
+        // 初始化画布大小和按钮
+        calculateSizes();
+        window.addEventListener('resize', calculateSizes);
+        window.addEventListener('orientationchange', () => {
+            setTimeout(calculateSizes, 100);
+        });
+
+        async function initGame() {
+            console.log('Game initializing...');
+            await loadImages();
+            console.log('Images loaded');
+            loadAudio();
+            enableAudioOnInteraction();
+            grid = createGrid();
+            console.log('Grid created:', grid.length, 'x', grid[0].length);
+            
+            // 初始化按钮
+            updateButtonPositions();
+            console.log('Buttons initialized');
+            
+            // 绘制初始画面
+            drawFrame();
+            if (startButton) {
+                console.log('Drawing start button');
+                startButton.draw();
+            }
+            
+            // 启动游戏循环
+            gameLoop();
+        }
+
+        initGame();
+    </script>
+</body>
+</html>

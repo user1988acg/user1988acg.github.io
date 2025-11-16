@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>🔮 塔罗牌占卜 – 爱情·事业·宠物·亲情</title>
+  <style>
+    :root{--bg:#0f1724;--card-back:#0b2536;--card-front:#fff;--accent:#f59e0b}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans CJK SC', 'PingFang SC', 'Hiragino Sans GB', "Microsoft YaHei", sans-serif;background:linear-gradient(180deg,#071020 0%, #0f1724 60%);color:#e6eef8;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .app{width:100%;max-width:1000px}
+    header{margin-bottom:20px}
+    h1{font-size:20px;margin:0;color:var(--accent)}
+    p.desc{margin:6px 0 0;color:#a9bfd6;font-size:13px}
+
+    .tag-selector{background:rgba(255,255,255,0.02);padding:20px;border-radius:12px;box-shadow:0 6px 30px rgba(2,6,23,0.7);margin-bottom:20px}
+    .tag-title{font-size:14px;color:#cfe6ff;margin-bottom:12px;font-weight:500}
+    .tag-buttons{display:flex;gap:10px;flex-wrap:wrap}
+    .tag-btn{padding:10px 16px;border-radius:8px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.02);color:inherit;cursor:pointer;transition:all 200ms ease;font-size:14px}
+    .tag-btn:hover{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.2)}
+    .tag-btn.active{background:var(--accent);color:#062024;border-color:var(--accent);font-weight:600}
+
+    .board{background:rgba(255,255,255,0.02);padding:24px;border-radius:12px;box-shadow:0 6px 30px rgba(2,6,23,0.7)}
+    .controls{display:flex;gap:12px;align-items:center;margin-bottom:18px;flex-wrap:wrap}
+    button{background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.06);padding:10px 14px;border-radius:10px;color:inherit;cursor:pointer;font-size:14px;transition:all 200ms}
+    button:hover{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.2)}
+    button:disabled{opacity:0.5;cursor:not-allowed}
+    button.primary{background:var(--accent);color:#062024;border:none;box-shadow:0 6px 18px rgba(245,158,11,0.12);font-weight:600}
+    button.primary:hover:not(:disabled){background:#f8b92e}
+
+    .music-control{display:flex;gap:8px;align-items:center;padding:8px 12px;background:rgba(245,158,11,0.1);border:1px solid var(--accent);border-radius:8px;font-size:13px}
+    .music-control button{padding:6px 10px;font-size:12px}
+
+    .spread{display:flex;gap:18px;justify-content:center;align-items:flex-end;padding:20px 10px;flex-wrap:wrap}
+    .card{width:150px;height:230px;perspective:1100px;cursor:pointer}
+    .card-inner{width:100%;height:100%;position:relative;transform-style:preserve-3d;transition:transform 700ms cubic-bezier(.2,.9,.2,1)}
+    .card.flipped .card-inner{transform:rotateY(180deg)}
+    .card-face{position:absolute;inset:0;border-radius:10px;display:flex;align-items:center;justify-content:center;backface-visibility:hidden;box-shadow:0 8px 18px rgba(2,6,23,0.6)}
+    .card-back{background:linear-gradient(135deg,var(--card-back),#072033);border:1px solid rgba(255,255,255,0.04);color:#fff;font-weight:700;letter-spacing:2px;font-size:32px}
+    .card-front{transform:rotateY(180deg);background:linear-gradient(180deg,#fff,#f4f7fb);color:#072033;padding:12px;flex-direction:column;overflow:hidden;position:relative}
+    .card-image{width:100%;height:70%;object-fit:cover;border-radius:4px;margin-bottom:6px}
+    .card-title{font-weight:700;font-size:12px;text-align:center;line-height:1.2;flex:1;display:flex;align-items:center;justify-content:center}
+
+    @media (max-width:768px){
+      .app{max-width:100%;padding:16px}
+      header{margin-bottom:16px}
+      h1{font-size:18px}
+      .tag-selector{padding:16px;margin-bottom:16px}
+      .board{padding:16px}
+      .card{width:120px;height:190px}
+      .card-image{height:65%}
+      .card-title{font-size:11px}
+      .spread{gap:12px;padding:16px 8px}
+      button{padding:8px 12px;font-size:13px}
+      .hint{font-size:12px;line-height:1.5}
+      .reading-content{font-size:13px}
+    }
+
+    .hint{margin-top:12px;color:#9fb4d8;font-size:13px;text-align:center}
+
+    .log{margin-top:18px;background:rgba(255,255,255,0.02);padding:14px;border-radius:8px;color:#cfe6ff;min-height:60px;display:flex;align-items:center;justify-content:center;text-align:center}
+
+    .reading{margin-top:20px;background:linear-gradient(135deg,rgba(245,158,11,0.05),rgba(124,58,202,0.05));padding:18px;border-radius:12px;border-left:4px solid var(--accent);display:none}
+    .reading.show{display:block;animation:slideIn 500ms ease}
+    @keyframes slideIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    .reading-title{font-size:16px;font-weight:700;color:var(--accent);margin-bottom:12px}
+    .reading-content{line-height:1.6;color:#d9e6f7;font-size:14px}
+
+    footer{margin-top:12px;text-align:center;color:#7d96b3;font-size:12px}
+
+    .image-input{display:none}
+    .upload-hint{font-size:12px;color:#7d96b3;margin-top:8px}
+
+    @media (max-width:640px){
+      .card{width:110px;height:170px}
+      .spread{gap:12px}
+      .tag-buttons{gap:8px}
+      .tag-btn{padding:8px 12px;font-size:13px}
+      .music-control{flex-direction:column;gap:6px}
+    }
+  </style>
+</head>
+<body>
+  <!-- 背景音乐 -->
+  <audio id="bgMusic" loop>
+    <source src="music.mp3" type="audio/mpeg">
+  </audio>
+
+  <div class="app">
+    <header>
+      <h1>🔮 塔罗牌占卜</h1>
+      <p class="desc">选择一个主题，抽取三张牌探索你的过去、现在与未来</p>
+    </header>
+
+    <div class="tag-selector">
+      <div class="tag-title">请选择占卜主题：</div>
+      <div class="tag-buttons">
+        <button class="tag-btn" data-tag="love">💗 爱情</button>
+        <button class="tag-btn" data-tag="career">💼 事业</button>
+        <button class="tag-btn" data-tag="pet">🐾 宠物</button>
+        <button class="tag-btn" data-tag="family">👨‍👩‍👧‍👦 亲情</button>
+      </div>
+    </div>
+
+    <main class="board">
+      <div class="controls">
+        <button id="shuffle">🔄 洗牌</button>
+        <button id="draw" class="primary">✨ 抽牌</button>
+        <button id="revealAll">👁️ 全部翻开</button>
+        <button id="reset">↻ 重新开始</button>
+        <div style="flex:1"></div>
+        <div class="music-control">
+          <span id="musicStatus">🎵</span>
+          <button id="musicBtn" style="padding:6px 10px;font-size:12px">🔊 音乐</button>
+        </div>
+        <div style="font-size:13px;color:#9fb4d8" id="tagDisplay"></div>
+      </div>
+
+      <div class="spread" id="spread">
+        <div class="card" data-pos="past">
+          <div class="card-inner">
+            <div class="card-face card-back">🎴</div>
+            <div class="card-face card-front">
+              <img class="card-image" src="" alt="card" />
+              <div class="card-title">未翻开</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" data-pos="present">
+          <div class="card-inner">
+            <div class="card-face card-back">🎴</div>
+            <div class="card-face card-front">
+              <img class="card-image" src="" alt="card" />
+              <div class="card-title">未翻开</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" data-pos="future">
+          <div class="card-inner">
+            <div class="card-face card-back">🎴</div>
+            <div class="card-face card-front">
+              <img class="card-image" src="" alt="card" />
+              <div class="card-title">未翻开</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="hint">
+        <strong>使用说明：</strong><br>
+        1️⃣ 先选择占卜主题<br>
+        2️⃣ 点击"洗牌"准备（或直接点击"抽牌"）<br>
+        3️⃣ 点击"抽牌"或单个卡牌翻开查看<br>
+        4️⃣ 系统会自动生成占卜解读
+      </div>
+
+      <div class="log" id="log">准备就绪 – 选择主题后开始占卜</div>
+
+      <div class="reading" id="reading">
+        <div class="reading-title">📖 占卜解读</div>
+        <div class="reading-content" id="readingContent"></div>
+      </div>
+
+      <footer>仅供娱乐 – 非专业占卜</footer>
+    </main>
+  </div>
+
+  <script>
+    // 78张完整塔罗牌数据
+    const ALL_CARDS = [
+      {id:0,name:'愚者',desc:'新的开始、自由、冒险'},
+      {id:1,name:'魔术师',desc:'意志、创造、资源整合'},
+      {id:2,name:'女祭司',desc:'直觉、潜意识、等待'},
+      {id:3,name:'女皇',desc:'孕育、丰盛、关怀'},
+      {id:4,name:'皇帝',desc:'结构、权威、稳定'},
+      {id:5,name:'教皇',desc:'传统、指导、信念'},
+      {id:6,name:'情人',desc:'选择、关系、和谐'},
+      {id:7,name:'战车',desc:'意志、掌控、胜利'},
+      {id:8,name:'力量',desc:'勇气、耐心、克制'},
+      {id:9,name:'隐者',desc:'内省、寻求、自我探索'},
+      {id:10,name:'命运之轮',desc:'周期、变化、机遇'},
+      {id:11,name:'正义',desc:'公平、因果、决定'},
+      {id:12,name:'倒吊人',desc:'牺牲、视角转换、等待'},
+      {id:13,name:'死神',desc:'结束、蜕变、新生'},
+      {id:14,name:'节制',desc:'平衡、调和、自制'},
+      {id:15,name:'恶魔',desc:'束缚、欲望、考验'},
+      {id:16,name:'塔',desc:'突变、崩坏、觉醒'},
+      {id:17,name:'星星',desc:'希望、疗愈、感悟'},
+      {id:18,name:'月亮',desc:'幻想、情绪、直觉'},
+      {id:19,name:'太阳',desc:'成功、喜悦、活力'},
+      {id:20,name:'审判',desc:'觉醒、审视、呼唤'},
+      {id:21,name:'世界',desc:'完成、成就、圆满'},
+      {id:22,name:'权杖A',desc:'新机会、能量、起始'},
+      {id:23,name:'权杖2',desc:'合作、计划、远景'},
+      {id:24,name:'权杖3',desc:'成长、建立、远见'},
+      {id:25,name:'权杖4',desc:'庆祝、稳定、和谐'},
+      {id:26,name:'权杖5',desc:'冲突、挑战、竞争'},
+      {id:27,name:'权杖6',desc:'成功、胜利、认可'},
+      {id:28,name:'权杖7',desc:'防守、坚持、决心'},
+      {id:29,name:'权杖8',desc:'急促、行动、通信'},
+      {id:30,name:'权杖9',desc:'防御、疲劳、坚持'},
+      {id:31,name:'权杖10',desc:'负担、完成、兴奋'},
+      {id:32,name:'权杖J',desc:'热情、自由、冒险精神'},
+      {id:33,name:'权杖Q',desc:'热情、吸引、创意'},
+      {id:34,name:'权杖K',desc:'领导、魅力、结谊'},
+      {id:35,name:'权杖侍者',desc:'信息、通信、学习'},
+      {id:36,name:'圣杯A',desc:'爱、感受、直觉'},
+      {id:37,name:'圣杯2',desc:'伴侣、亲密、互动'},
+      {id:38,name:'圣杯3',desc:'庆祝、友谊、社交'},
+      {id:39,name:'圣杯4',desc:'冷漠、失望、退缩'},
+      {id:40,name:'圣杯5',desc:'遗憾、失落、悲伤'},
+      {id:41,name:'圣杯6',desc:'怀旧、美好记忆、艺术'},
+      {id:42,name:'圣杯7',desc:'幻想、选择、机会'},
+      {id:43,name:'圣杯8',desc:'放下、移动、远离'},
+      {id:44,name:'圣杯9',desc:'满足、喜悦、成就'},
+      {id:45,name:'圣杯10',desc:'家族、幸福、完整'},
+      {id:46,name:'圣杯J',desc:'年轻、创意、敏感'},
+      {id:47,name:'圣杯Q',desc:'直觉、关怀、爱'},
+      {id:48,name:'圣杯K',desc:'情感、富有同情心、善良'},
+      {id:49,name:'圣杯侍者',desc:'邀请、建议、感受'},
+      {id:50,name:'宝剑A',desc:'真理、新想法、开始'},
+      {id:51,name:'宝剑2',desc:'停滞、困境、平衡'},
+      {id:52,name:'宝剑3',desc:'悲伤、分离、苦难'},
+      {id:53,name:'宝剑4',desc:'休息、沉思、休战'},
+      {id:54,name:'宝剑5',desc:'冲突、紧张、失败'},
+      {id:55,name:'宝剑6',desc:'前进、逃脱、旅行'},
+      {id:56,name:'宝剑7',desc:'欺骗、阴谋、困境'},
+      {id:57,name:'宝剑8',desc:'束缚、陷阱、无力'},
+      {id:58,name:'宝剑9',desc:'焦虑、噩梦、痛苦'},
+      {id:59,name:'宝剑10',desc:'结束、痛苦、失败'},
+      {id:60,name:'宝剑J',desc:'分析、批评、学习'},
+      {id:61,name:'宝剑Q',desc:'清晰、真理、独立'},
+      {id:62,name:'宝剑K',desc:'权威、公正、理性'},
+      {id:63,name:'宝剑侍者',desc:'信息、骚乱、警告'},
+      {id:64,name:'金币A',desc:'富足、新机会、资源'},
+      {id:65,name:'金币2',desc:'平衡、适应、灵活'},
+      {id:66,name:'金币3',desc:'团队、合作、技能'},
+      {id:67,name:'金币4',desc:'所有物、稳定、财富'},
+      {id:68,name:'金币5',desc:'困难、失业、贫困'},
+      {id:69,name:'金币6',desc:'具慈、给予、交换'},
+      {id:70,name:'金币7',desc:'评估、等待、收获'},
+      {id:71,name:'金币8',desc:'工作、学徒、细节'},
+      {id:72,name:'金币9',desc:'富足、珍惜、满足'},
+      {id:73,name:'金币10',desc:'遗产、家庭、继承'},
+      {id:74,name:'金币J',desc:'实用、关心、信使'},
+      {id:75,name:'金币Q',desc:'自然、丰富、关怀'},
+      {id:76,name:'金币K',desc:'富裕、实际、商业'},
+      {id:77,name:'金币侍者',desc:'学习、机会、成长'},
+    ];
+
+    const READINGS = {
+      love: {name:'💗 爱情', interp:{ppp:'这是一个非常积极的爱情信号！过去的经历让你成长，现在的你充满吸引力和自信，未来将迎来美好的感情。相信直觉，敞开心扉。', ppn:'感情发展良好，但可能面临新的挑战或转折。这可能是转向新方向的时刻，做好准备应对变化。', pnp:'虽然当下可能有些混乱或失望，但这是必要的过程。未来会带来新的机遇和更真挚的连接。坚持一下。', npp:'过去的伤痛正在愈合，现在你开放心扉，未来将带来新的机遇和更好的理解。这是一个转变的时期，拥抱新的可能性。', npn:'经历了困难，但现在有所好转。继续改善，未来将更稳定和幸福。', nnp:'过去可能有些问题，但现在改善了。继续促进沟通和联系，未来会更好。', pnn:'过去很好，但当下可能有些调整。保持信心，未来会带来突破。', nnn:'这个阶段充满挑战，但也是学习和成长的机会。调整策略，相信前方的光明。'}},
+      career: {name:'💼 事业', interp:{ppp:'事业蒸蒸日上！过去的努力没有白费，现在的你在正确的轨道上，未来将看到显著的成就和成功。继续努力！', ppn:'职业生涯良好，但可能面临新的挑战或转折。这可能是转向新方向的时刻，做好准备应对变化。', pnp:'当下的职业困境是暂时的。你的基础很扎实，通过坚持和适应，未来会迎来突破和机遇。', npp:'你正在克服职业的困难，现在状况在改善。继续这个势头，未来将带来稳定和进步。', npn:'经历了困难，但现在有所好转。继续改善，未来将更有前景。', nnp:'过去可能有些职业挑战，但现在改善了。继续促进成长，未来会更好。', pnn:'过去的基础良好，但当下可能有些阻力。保持信心，未来会带来突破。', nnn:'职业道路充满挑战，但也是学习和成长的机会。调整策略，相信前方的光明。'}},
+      pet: {name:'🐾 宠物', interp:{ppp:'你的宠物状态很好！过去建立的良好关系，现在的它健康快乐，未来将继续幸福相伴。继续用心照顾它。', ppn:'宠物整体状况很好，但需要注意潜在的健康或行为问题。定期检查和适当的训练会很有帮助。', pnp:'宠物可能最近有些不适或调皮，但这是暂时的。通过耐心和关爱，它会恢复活力并更亲近。', npp:'过去宠物可能有些问题，但现在状况改善了。继续保持良好的护理习惯，未来会更好。', npn:'经历了困难，但现在有所好转。继续改善，未来会更稳定。', nnp:'过去宠物可能有些挑战，但现在改善了。继续保持良好照顾，未来会更健康。', pnn:'过去很好，但当下可能有些调整。保持耐心和关爱，未来会恢复。', nnn:'宠物可能正在经历转变期，这是正常的。继续关注和护理，它会适应得更好。'}},
+      family: {name:'👨‍👩‍👧‍👦 亲情', interp:{ppp:'家庭关系良好！过去的纽带依旧坚固，现在充满温暖和谐，未来家人将更亲密。珍惜这样的时刻。', ppn:'家庭基础稳固，但可能有些沟通或理解的问题需要解决。主动倾听和表达将化解任何隔阂。', pnp:'当下可能有家庭摩擦或分歧，但这是正常的。通过努力和理解，家庭关系将变得更强。', npp:'过去的家庭困难正在缓解，现在的氛围改善了。继续促进沟通和联系，未来将更和谐。', npn:'经历了家庭困难，但现在有所缓解。继续改善，未来将更稳定。', nnp:'过去的家庭困难正在改善，现在状况好转了。继续努力促进联系，未来会更好。', pnn:'过去很好，但现在可能有些调整需要应对。保持耐心和开放，未来将更和谐。', nnn:'家庭正在经历挑战，但这是成长的机会。继续促进沟通和理解，光明就在前方。'}}
+    };
+
+    function shuffleArray(arr){
+      const a = arr.slice();
+      for(let i=a.length-1;i>0;i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [a[i],a[j]]=[a[j],a[i]];
+      }
+      return a;
+    }
+
+    function getCardSentiment(cardId){
+      const negative = [15,16,39,40,52,53,54,56,57,58,59,68];
+      return negative.includes(cardId) ? 'n' : 'p';
+    }
+
+    function getCardImageUrl(cardId) {
+      const colors = ['FF6B6B','4ECDC4','45B7D1','FFA07A','98D8C8','F7DC6F','BB8FCE','85C1E2'];
+      const color = colors[cardId % colors.length];
+      return `images/card_${cardId}.jpg`;
+    }
+
+    const spreadEl = document.getElementById('spread');
+    const logEl = document.getElementById('log');
+    const drawBtn = document.getElementById('draw');
+    const shuffleBtn = document.getElementById('shuffle');
+    const revealAllBtn = document.getElementById('revealAll');
+    const resetBtn = document.getElementById('reset');
+    const readingEl = document.getElementById('reading');
+    const readingContentEl = document.getElementById('readingContent');
+    const tagDisplayEl = document.getElementById('tagDisplay');
+    const bgMusic = document.getElementById('bgMusic');
+    const musicBtn = document.getElementById('musicBtn');
+    const musicStatus = document.getElementById('musicStatus');
+
+    let deck = [];
+    let currentDraw = [];
+    let selectedTag = null;
+    let revealedCount = 0;
+    let isMusicPlaying = false;
+
+    function buildDeck(){
+      deck = shuffleArray(ALL_CARDS.map(c=>Object.assign({},c)));
+      log('已洗牌 – 牌库共 ' + deck.length + ' 张 ');
+    }
+
+    function log(txt){
+      logEl.textContent = txt;
+    }
+
+    buildDeck();
+
+    // 音乐控制
+    musicBtn.addEventListener('click', function(){
+      if(isMusicPlaying){
+        bgMusic.pause();
+        isMusicPlaying = false;
+        musicStatus.textContent = '🔇';
+        musicBtn.textContent = '🔊 音乐';
+      } else {
+        bgMusic.play().catch(()=>{
+          musicStatus.textContent = '❌';
+          log('音乐加载失败，请检查music.mp3文件');
+        });
+        isMusicPlaying = true;
+        musicStatus.textContent = '🎵';
+        musicBtn.textContent = '🔊 音乐';
+      }
+    });
+
+    // 自动播放音乐（某些浏览器可能受限）
+    window.addEventListener('load', function(){
+      bgMusic.play().then(()=>{
+        isMusicPlaying = true;
+        musicStatus.textContent = '🎵';
+      }).catch(()=>{
+        isMusicPlaying = false;
+        musicStatus.textContent = '🔇';
+      });
+    });
+
+    // 标签选择
+    document.querySelectorAll('.tag-btn').forEach(btn=>{
+      btn.addEventListener('click', function(){
+        document.querySelectorAll('.tag-btn').forEach(b=>b.classList.remove('active'));
+        this.classList.add('active');
+        selectedTag = this.dataset.tag;
+        tagDisplayEl.textContent = '主题：' + READINGS[selectedTag].name;
+        log('已选择主题 – 现在洗牌并开始占卜');
+        readingEl.classList.remove('show');
+      });
+    });
+
+    shuffleBtn.addEventListener('click', function(){
+      if(!selectedTag){ log('请先选择占卜主题！'); return; }
+      buildDeck();
+      resetSpread();
+    });
+
+    resetBtn.addEventListener('click', function(){
+      buildDeck();
+      resetSpread();
+      document.querySelectorAll('.tag-btn').forEach(b=>b.classList.remove('active'));
+      selectedTag = null;
+      tagDisplayEl.textContent = '';
+      readingEl.classList.remove('show');
+      log('已重置 – 准备就绪');
+    });
+
+    function resetSpread(){
+      currentDraw = [];
+      revealedCount = 0;
+      document.querySelectorAll('.card').forEach(c=>{
+        c.classList.remove('flipped');
+        const front = c.querySelector('.card-front');
+        front.querySelector('.card-title').textContent = '未翻开';
+      });
+      log('已重置 – 准备新一轮占卜');
+    }
+
+    drawBtn.addEventListener('click', function(){
+      if(!selectedTag){ log('请先选择占卜主题！'); return; }
+      if(deck.length < 3){ log('牌不够了，请先洗牌'); return; }
+      currentDraw = [];
+      revealedCount = 0;
+      const drawn = deck.splice(0,3);
+      drawn.forEach(d=>{
+        currentDraw.push({card:d, reversed: Math.random()<0.3});
+      });
+      const cards = Array.from(document.querySelectorAll('.card'));
+      cards.forEach((el,idx)=>{
+        el.classList.remove('flipped');
+        setTimeout(()=>{
+          el.style.transform = 'translateY(-6px)';
+          setTimeout(()=>el.style.transform='translateY(0)',250);
+        }, idx*180);
+      });
+      log('已抽取三张牌 – 点击卡牌翻开查看含义');
+      readingEl.classList.remove('show');
+    });
+
+    function revealCard(index){
+      if(!currentDraw[index]) return;
+      const slot = document.querySelectorAll('.card')[index];
+      const front = slot.querySelector('.card-front');
+      const img = front.querySelector('.card-image');
+      const titleEl = front.querySelector('.card-title');
+      const data = currentDraw[index];
+      
+      if(!slot.classList.contains('flipped')){
+        revealedCount++;
+      }
+      
+      img.src = getCardImageUrl(data.card.id);
+      const posName = slot.dataset.pos === 'past' ? '过去' : (slot.dataset.pos === 'present' ? '现在' : '未来');
+      const name = data.card.name + (data.reversed ? '（逆位）' : '（正位）');
+      titleEl.textContent = name;
+      
+      slot.classList.add('flipped');
+      log(`${posName}：${data.card.name} ${data.reversed ? '（逆位）' : '（正位）'} – ${data.card.desc}`);
+      
+      if(revealedCount===3){
+        generateReading();
+      }
+    }
+
+    revealAllBtn.addEventListener('click', function(){
+      if(currentDraw.length<3){ log('请先抽牌'); return; }
+      document.querySelectorAll('.card').forEach((el,idx)=>{
+        if(!el.classList.contains('flipped')){
+          revealCard(idx);
+        }
+      });
+    });
+
+    function generateReading(){
+      const sentiments = currentDraw.map(d=>getCardSentiment(d.card.id)).join('');
+      const pattern = sentiments || 'ppp';
+      const interp = READINGS[selectedTag].interp;
+      const text = interp[pattern] || interp.ppp;
+      
+      readingContentEl.innerHTML = '<p>' + text + '</p><p style="margin-top:16px;font-size:13px;color:#9fb4d8"><strong>✨ 三张牌的寓意：</strong><br>' + 
+        '<strong>过去：</strong>' + currentDraw[0].card.name + ' ' + (currentDraw[0].reversed?'（逆位）':'（正位）') + ' – ' + currentDraw[0].card.desc +
+        '<br><strong>现在：</strong>' + currentDraw[1].card.name + ' ' + (currentDraw[1].reversed?'（逆位）':'（正位）') + ' – ' + currentDraw[1].card.desc +
+        '<br><strong>未来：</strong>' + currentDraw[2].card.name + ' ' + (currentDraw[2].reversed?'（逆位）':'（正位）') + ' – ' + currentDraw[2].card.desc + '</p>';
+      
+      readingEl.classList.add('show');
+    }
+
+    // 卡牌点击事件
+    document.querySelectorAll('.card').forEach((card, idx) => {
+      card.addEventListener('click', function(){
+        if(currentDraw.length > 0){
+          revealCard(idx);
+        }
+      });
+    });
+  </script>
+</body>
+</html>
